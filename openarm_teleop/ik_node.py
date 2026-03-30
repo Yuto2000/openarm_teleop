@@ -337,11 +337,29 @@ class QuestTeleopIKNode(Node):
             self.get_logger().error(f"IK solve error: {e}")
             return
 
-        # Smooth + clamp
+        # Smooth + clamp (only for actively tracked arms)
         new_q_np = np.array(new_q)
         desired = self.cmd_q + self.smoothing * (new_q_np - self.cmd_q)
         delta_q = np.clip(desired - self.cmd_q, -self.max_joint_step, self.max_joint_step)
+
+        # Mask: only update joints of tracked arms, keep others at current state
+        if not self.right.active:
+            for i in self.right_arm_indices:
+                delta_q[i] = 0.0
+        if not self.left.active:
+            for i in self.left_arm_indices:
+                delta_q[i] = 0.0
+
         self.cmd_q = self.cmd_q + delta_q
+
+        # Keep untracked arms synced with actual joint state
+        q_actual = np.array(self.q_current)
+        if not self.right.active:
+            for i in self.right_arm_indices:
+                self.cmd_q[i] = q_actual[i]
+        if not self.left.active:
+            for i in self.left_arm_indices:
+                self.cmd_q[i] = q_actual[i]
 
         # Publish right arm
         if self.right.active:
